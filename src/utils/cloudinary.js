@@ -17,15 +17,27 @@ const uploadOnCloudinary = async (localFilePath) => {
         })
         // file has been uploaded successfull
         //console.log("file is uploaded on cloudinary ", response.url);
-        fs.unlinkSync(localFilePath)
+        await fs.promises.unlink(localFilePath).catch(() => {})
         return response;
 
     } catch (error) {
-        fs.unlinkSync(localFilePath) // remove the locally saved temporary file as the upload operation got failed
+        await fs.promises.unlink(localFilePath).catch(() => {})
         return null;
     }
 }
 
+const deleteFromCloudinary = async (assetUrl, resourceType = "image") => {
+    if (!assetUrl) return
+    try {
+        const url = new URL(assetUrl)
+        const uploadIndex = url.pathname.indexOf("/upload/")
+        if (uploadIndex === -1) return
+        const assetPath = url.pathname.slice(uploadIndex + 8).replace(/^v\d+\//, "")
+        const publicId = assetPath.replace(/\.[^/.]+$/, "")
+        if (publicId) await cloudinary.uploader.destroy(publicId, { resource_type: resourceType })
+    } catch {
+        // Asset cleanup should not make the API request fail.
+    }
+}
 
-
-export {uploadOnCloudinary}
+export {uploadOnCloudinary, deleteFromCloudinary}

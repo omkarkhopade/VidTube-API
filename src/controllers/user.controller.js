@@ -1,7 +1,7 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
 import {ApiError} from "../utils/ApiError.js"
 import { User} from "../models/user.model.js"
-import {uploadOnCloudinary} from "../utils/cloudinary.js"
+import {deleteFromCloudinary, uploadOnCloudinary} from "../utils/cloudinary.js"
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken"
 import mongoose from "mongoose";
@@ -24,6 +24,12 @@ const generateAccessAndRefereshTokens = async(userId) =>{
     }
 }
 
+const cookieOptions = () => ({
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax"
+})
+
 const registerUser = asyncHandler( async (req, res) => {
     // get user details from frontend
     // validation - not empty
@@ -39,14 +45,15 @@ const registerUser = asyncHandler( async (req, res) => {
     const {fullName, email, username, password } = req.body
     //console.log("email: ", email);
 
-    if (
-        [fullName, email, username, password].some((field) => field?.trim() === "")
-    ) {
+    if ([fullName, email, username, password].some((field) => !field?.trim())) {
         throw new ApiError(400, "All fields are required")
     }
 
+    const normalizedEmail = email.trim().toLowerCase()
+    const normalizedUsername = username.trim().toLowerCase()
+
     const existedUser = await User.findOne({
-        $or: [{ username }, { email }]
+        $or: [{ username: normalizedUsername }, { email: normalizedEmail }]
     })
 
     if (existedUser) {
@@ -54,7 +61,7 @@ const registerUser = asyncHandler( async (req, res) => {
     }
     //console.log(req.files);
 
-    const avatarLocalPath = req.files?.avatar[0]?.path;
+    const avatarLocalPath = req.files?.avatar?.[0]?.path;
     //const coverImageLocalPath = req.files?.coverImage[0]?.path;
 
     let coverImageLocalPath;
@@ -79,9 +86,9 @@ const registerUser = asyncHandler( async (req, res) => {
         fullName,
         avatar: avatar.url,
         coverImage: coverImage?.url || "",
-        email, 
+        email: normalizedEmail,
         password,
-        username: username.toLowerCase()
+        username: normalizedUsername
     })
 
     const createdUser = await User.findById(user._id).select(
@@ -93,7 +100,7 @@ const registerUser = asyncHandler( async (req, res) => {
     }
 
     return res.status(201).json(
-        new ApiResponse(200, createdUser, "User registered Successfully")
+        new ApiResponse(201, createdUser, "User registered successfully")
     )
 
 } )
@@ -107,9 +114,7 @@ const loginUser = asyncHandler(async (req, res) =>{
     //send cookie
 
     const {email, username, password} = req.body
-    console.log(email);
-
-    if (!username && !email) {
+    if ((!username && !email) || !password) {
         throw new ApiError(400, "username or email is required")
     }
     
@@ -119,9 +124,9 @@ const loginUser = asyncHandler(async (req, res) =>{
         
     // }
 
-    const user = await User.findOne({
-        $or: [{username}, {email}]
-    })
+    const identifier = username?.trim().toLowerCase()
+    const normalizedEmail = email?.trim().toLowerCase()
+    const user = await User.findOne(username ? { username: identifier } : { email: normalizedEmail })
 
     if (!user) {
         throw new ApiError(404, "User does not exist")
@@ -137,10 +142,7 @@ const loginUser = asyncHandler(async (req, res) =>{
 
     const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
 
-    const options = {
-        httpOnly: true,
-        secure: true
-    }
+    const options = cookieOptions()
 
     return res
     .status(200)
@@ -171,10 +173,7 @@ const logoutUser = asyncHandler(async(req, res) => {
         }
     )
 
-    const options = {
-        httpOnly: true,
-        secure: true
-    }
+    const options = cookieOptions()
 
     return res
     .status(200)
@@ -184,7 +183,7 @@ const logoutUser = asyncHandler(async(req, res) => {
 })
 
 const refreshAccessToken = asyncHandler(async (req, res) => {
-    const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken
+    const incomingRefreshToken = req.cookies?.refreshToken || req.body?.refreshToken
 
     if (!incomingRefreshToken) {
         throw new ApiError(401, "unauthorized request")
@@ -207,12 +206,9 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
             
         }
     
-        const options = {
-            httpOnly: true,
-            secure: true
-        }
+        const options = cookieOptions()
     
-        const {accessToken, newRefreshToken} = await generateAccessAndRefereshTokens(user._id)
+        const {accessToken, refreshToken: newRefreshToken} = await generateAccessAndRefereshTokens(user._id)
     
         return res
         .status(200)
@@ -233,8 +229,7 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
 
 const changeCurrentPassword = asyncHandler(async(req, res) => {
     const {oldPassword, newPassword} = req.body
-
-    
+    if (!oldPassword || !newPassword || newPassword.length < 8) throw new ApiError(400, "Old password and a new password of at least 8 characters are required")
 
     const user = await User.findById(req.user?._id)
     const isPasswordCorrect = await user.isPasswordCorrect(oldPassword)
@@ -244,7 +239,7 @@ const changeCurrentPassword = asyncHandler(async(req, res) => {
     }
 
     user.password = newPassword
-    await user.save({validateBeforeSave: false})
+    await user.save()
 
     return res
     .status(200)
@@ -265,16 +260,20 @@ const getCurrentUser = asyncHandler(async(req, res) => {
 const updateAccountDetails = asyncHandler(async(req, res) => {
     const {fullName, email} = req.body
 
-    if (!fullName || !email) {
+    if (!fullName?.trim() || !email?.trim()) {
         throw new ApiError(400, "All fields are required")
     }
+
+    const normalizedEmail = email.trim().toLowerCase()
+    const emailOwner = await User.findOne({ email: normalizedEmail, _id: { $ne: req.user._id } })
+    if (emailOwner) throw new ApiError(409, "Email is already in use")
 
     const user = await User.findByIdAndUpdate(
         req.user?._id,
         {
             $set: {
-                fullName,
-                email: email
+                fullName: fullName.trim(),
+                email: normalizedEmail
             }
         },
         {new: true}
@@ -293,15 +292,14 @@ const updateUserAvatar = asyncHandler(async(req, res) => {
         throw new ApiError(400, "Avatar file is missing")
     }
 
-    //TODO: delete old image - assignment
-
     const avatar = await uploadOnCloudinary(avatarLocalPath)
 
-    if (!avatar.url) {
+    if (!avatar?.url) {
         throw new ApiError(400, "Error while uploading on avatar")
         
     }
 
+    const oldAvatar = req.user.avatar
     const user = await User.findByIdAndUpdate(
         req.user?._id,
         {
@@ -311,6 +309,7 @@ const updateUserAvatar = asyncHandler(async(req, res) => {
         },
         {new: true}
     ).select("-password")
+    await deleteFromCloudinary(oldAvatar)
 
     return res
     .status(200)
@@ -326,16 +325,14 @@ const updateUserCoverImage = asyncHandler(async(req, res) => {
         throw new ApiError(400, "Cover image file is missing")
     }
 
-    //TODO: delete old image - assignment
-
-
     const coverImage = await uploadOnCloudinary(coverImageLocalPath)
 
-    if (!coverImage.url) {
-        throw new ApiError(400, "Error while uploading on avatar")
+    if (!coverImage?.url) {
+        throw new ApiError(400, "Error while uploading cover image")
         
     }
 
+    const oldCoverImage = req.user.coverImage
     const user = await User.findByIdAndUpdate(
         req.user?._id,
         {
@@ -345,6 +342,7 @@ const updateUserCoverImage = asyncHandler(async(req, res) => {
         },
         {new: true}
     ).select("-password")
+    await deleteFromCloudinary(oldCoverImage)
 
     return res
     .status(200)

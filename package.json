@@ -1,11 +1,14 @@
 {
-  "name": "backend",
+  "name": "vidtube-api",
   "version": "1.0.0",
-  "description": "a backend for - youtube",
+  "description": "Production-oriented REST API for the VidTube video platform",
   "type": "module",
-  "main": "index.js",
+  "main": "src/index.js",
   "scripts": {
-    "dev": "nodemon -r dotenv/config --experimental-json-modules src/index.js"
+    "dev": "nodemon src/index.js",
+    "start": "node src/index.js",
+    "check": "node scripts/check.js",
+    "test": "node --test"
   },
   "keywords": [
     "javascript",
@@ -19,8 +22,8 @@
     "prettier": "^3.9.5"
   },
   "dependencies": {
-    "bcrypt": "^5.1.1",
-    "cloudinary": "^1.41.3",
+    "bcrypt": "^6.0.0",
+    "cloudinary": "^2.10.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",

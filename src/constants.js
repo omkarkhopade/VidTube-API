@@ -1,1 +1,1 @@
-export const DB_NAME = "projmanage"
+export const DB_NAME = "vidtube"

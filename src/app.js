@@ -1,11 +1,16 @@
 import express from "express"
 import cors from "cors"
 import cookieParser from "cookie-parser"
+import { errorHandler, notFound } from "./middlewares/error.middleware.js"
 
 const app = express()
+app.set("trust proxy", 1)
+app.disable("x-powered-by")
+
+const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173").split(",").map((origin) => origin.trim())
 
 app.use(cors({
-    origin: process.env.CORS_ORIGIN,
+    origin: allowedOrigins,
     credentials: true
 }))
 
@@ -13,6 +18,12 @@ app.use(express.json({limit: "16kb"}))
 app.use(express.urlencoded({extended: true, limit: "16kb"}))
 app.use(express.static("public"))
 app.use(cookieParser())
+app.use((_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff")
+    res.setHeader("X-Frame-Options", "DENY")
+    res.setHeader("Referrer-Policy", "no-referrer")
+    next()
+})
 
 
 //routes import
@@ -36,6 +47,9 @@ app.use("/api/v1/comments", commentRouter)
 app.use("/api/v1/likes", likeRouter)
 app.use("/api/v1/playlist", playlistRouter)
 app.use("/api/v1/dashboard", dashboardRouter)
+
+app.use(notFound)
+app.use(errorHandler)
 
 // http://localhost:8000/api/v1/users/register
 
