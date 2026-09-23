@@ -1,6 +1,6 @@
 # VidTube API
 
-VidTube is a REST API for a video-sharing platform. It provides JWT authentication, Cloudinary media uploads, video publishing, comments, likes, subscriptions, playlists, tweets, watch history, and creator dashboard statistics.
+VidTube is a REST API for a video-sharing platform. It provides JWT authentication, Cloudinary media uploads, video publishing, comments, likes, subscriptions, playlists, tweets, watch history and creator dashboard statistics.
 
 ## Features
 
