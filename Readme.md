@@ -26,9 +26,11 @@ VidTube is a REST API for a video-sharing platform. It provides JWT authenticati
 
 ## Requirements
 
+
 - Node.js 20 or newer
 - A MongoDB Atlas database (or another MongoDB deployment)
 - A Cloudinary account
+
 
 ## Local setup
 
